@@ -15,7 +15,13 @@ class DuplicateCleaner:
 
     def get_base_name(self, filename: str) -> str:
         """Extract base name without _1, _2, etc. suffix"""
-        # Match pattern like "name_1.jpg" or "name (1).jpg"
+        # First try to match the exact pattern we're looking for
+        pattern = r'^(IMG_\d+_\d+)(?:_\d+)?(\.[^.]+)$'
+        match = re.match(pattern, filename)
+        if match:
+            return match.group(1) + match.group(2)
+        
+        # Fall back to the original pattern for other cases
         pattern = r'^(.+?)(?:_\d+|\s+\(\d+\))(\.[^.]+)$'
         match = re.match(pattern, filename)
         if match:
@@ -94,6 +100,7 @@ class DuplicateCleaner:
             print("Duplicates to remove:")
             total_size = 0
             
+            # Calculate sizes before deletion
             for dup in duplicates:
                 size = dup.stat().st_size
                 total_size += size
@@ -102,9 +109,10 @@ class DuplicateCleaner:
             if not self.dry_run:
                 for dup in duplicates:
                     try:
+                        # Store size before deletion for statistics
+                        self.space_saved += dup.stat().st_size
                         dup.unlink()
                         self.files_deleted += 1
-                        self.space_saved += dup.stat().st_size
                     except Exception as e:
                         print(f"Error deleting {dup}: {e}")
             
