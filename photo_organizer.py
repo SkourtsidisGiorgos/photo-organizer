@@ -3,11 +3,16 @@ from datetime import datetime
 import shutil
 import argparse
 import time
-from typing import Dict, Set
+from typing import Dict, Set, Optional
 import humanize
 import psutil
 from tqdm import tqdm
 from statistics import mean
+from PIL import Image
+from PIL.ExifTags import TAGS
+import subprocess
+import json
+import os
 
 class PhotoOrganizer:
     def __init__(self, source_dir: Path, dest_dir: Path, move_files: bool = False, dry_run: bool = False):
@@ -15,7 +20,10 @@ class PhotoOrganizer:
         self.dest_dir = dest_dir
         self.move_files = move_files
         self.dry_run = dry_run
-        self.supported_formats = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.dng', '.raw', '.cr2', '.nef', '.arw', '.mov', '.mp4', '.avi'}  # Added more video formats
+        self.image_formats = {'.jpg', '.jpeg', '.png', '.tiff', '.bmp', '.gif'}
+        self.raw_formats = {'.dng', '.raw', '.cr2', '.nef', '.arw'}
+        self.video_formats = {'.mov', '.mp4', '.avi'}
+        self.supported_formats = self.image_formats | self.raw_formats | self.video_formats
         self.failed_files: Set[Path] = set()
         self.retry_count = 3
         self.total_size = 0
@@ -25,6 +33,173 @@ class PhotoOrganizer:
             'sizes': [],
             'dates': []
         }
+
+    def get_exif_date_pillow(self, file_path: Path) -> Optional[datetime]:
+        """Extract date from EXIF using Pillow for standard image formats."""
+        try:
+            with Image.open(file_path) as img:
+                # GIF and some other formats don't support EXIF
+                if file_path.suffix.lower() == '.gif':
+                    return None
+                    
+                # Only try to get EXIF if the image format supports it
+                if hasattr(img, '_getexif'):
+                    exif = img._getexif()
+                    if not exif:
+                        return None
+                
+                # List of EXIF tags to check for date information
+                date_tags = [36867,  # DateTimeOriginal
+                           36868,  # DateTimeDigitized
+                           306]    # DateTime
+                
+                for tag in date_tags:
+                    if tag in exif:
+                        try:
+                            # Parse standard EXIF date format "YYYY:MM:DD HH:MM:SS"
+                            date_str = exif[tag]
+                            return datetime.strptime(date_str, '%Y:%m:%d %H:%M:%S')
+                        except (ValueError, TypeError):
+                            continue
+        except Exception as e:
+            print(f"\nError reading EXIF from {file_path}: {e}")
+        return None
+
+    def get_exif_date_exiftool(self, file_path: Path) -> Optional[datetime]:
+        """Extract date using exiftool for any supported format."""
+        try:
+            # Run exiftool and get JSON output
+            result = subprocess.run([
+                'exiftool',
+                '-json',
+                '-DateTimeOriginal',
+                '-CreateDate',
+                '-MediaCreateDate',
+                '-TrackCreateDate',
+                str(file_path)
+            ], capture_output=True, text=True)
+
+            if result.returncode == 0:
+                data = json.loads(result.stdout)[0]
+                
+                # Check various date fields in order of preference
+                date_fields = [
+                    'DateTimeOriginal',
+                    'CreateDate',
+                    'MediaCreateDate',
+                    'TrackCreateDate'
+                ]
+
+                for field in date_fields:
+                    if field in data and data[field]:
+                        try:
+                            # Handle various date formats
+                            date_str = data[field].split('+')[0]  # Remove timezone if present
+                            return datetime.strptime(date_str, '%Y:%m:%d %H:%M:%S')
+                        except (ValueError, TypeError):
+                            continue
+                            
+        except (subprocess.SubprocessError, json.JSONDecodeError, IndexError) as e:
+            print(f"\nError using exiftool for {file_path}: {e}")
+        return None
+
+    def get_file_date(self, file_path: Path) -> datetime:
+        """Get the file date using the best available method."""
+        date = None
+        suffix = file_path.suffix.lower()
+
+        # Try EXIF data first for supported formats
+        if suffix in self.image_formats:
+            date = self.get_exif_date_pillow(file_path)
+        
+        # If Pillow failed or for other formats, try exiftool
+        if date is None and (suffix in self.raw_formats or suffix in self.video_formats or suffix in self.image_formats):
+            date = self.get_exif_date_exiftool(file_path)
+
+        # Fall back to file modification time if no EXIF data available
+        if date is None:
+            try:
+                # Try creation time first (Windows)
+                if os.name == 'nt':
+                    date = datetime.fromtimestamp(file_path.stat().st_ctime)
+                else:
+                    # Use modification time as last resort
+                    date = datetime.fromtimestamp(file_path.stat().st_mtime)
+            except Exception as e:
+                print(f"\nError getting file time for {file_path}: {e}")
+                # Use current time as absolute last resort
+                date = datetime.now()
+
+        return date
+
+    def process_file(self, file_path: Path, file_size: int, pbar: tqdm) -> bool:
+        """Process a single file with retries. In dry-run mode, only simulates the operations."""
+        for attempt in range(self.retry_count):
+            try:
+                # Get file date using EXIF or fallback methods
+                file_date = self.get_file_date(file_path)
+                
+                # Create year/month path
+                year = str(file_date.year)
+                month = str(file_date.month).zfill(2)
+                target_dir = self.dest_dir / year / month
+                
+                # Create directory with error handling
+                try:
+                    target_dir.mkdir(parents=True, exist_ok=True)
+                except Exception as e:
+                    print(f"\nError creating directory {target_dir}: {e}")
+                    return False
+                
+                destination = target_dir / file_path.name
+                
+                # Handle duplicate files
+                if destination.exists():
+                    base = destination.stem
+                    suffix = destination.suffix
+                    counter = 1
+                    while destination.exists():
+                        destination = target_dir / f"{base}_{counter}{suffix}"
+                        counter += 1
+                
+                # Copy or move the file with exclusive access
+                operation = "Moving" if self.move_files else "Copying"
+                if self.dry_run:
+                    operation = f"Would {operation.lower()}"
+                pbar.set_description(f"{operation} {file_path.name}")
+                
+                if self.dry_run:
+                    print(f"{operation} {file_path} -> {destination}")
+                    self.processed_size += file_size
+                    pbar.update(file_size)
+                    return True
+                
+                try:
+                    if self.move_files:
+                        shutil.move(str(file_path), str(destination))
+                    else:
+                        shutil.copy2(str(file_path), str(destination))
+                except PermissionError:
+                    time.sleep(1)
+                    continue
+                
+                # Verify file integrity
+                if not self.verify_file_integrity(file_path, destination, file_size):
+                    raise ValueError("File integrity check failed after transfer")
+                
+                self.processed_size += file_size
+                pbar.update(file_size)
+                return True
+                
+            except Exception as e:
+                if attempt == self.retry_count - 1:
+                    self.failed_files.add(file_path)
+                    print(f"\nFailed to process {file_path.name} after {self.retry_count} attempts: {e}")
+                    return False
+                print(f"\nRetrying {file_path.name} (attempt {attempt + 2}/{self.retry_count})")
+                time.sleep(1)
+        
+        return False
 
     def get_all_files(self) -> Dict[Path, int]:
         """Get all supported files and their sizes."""
@@ -74,76 +249,6 @@ class PhotoOrganizer:
         except Exception as e:
             print(f"\nError verifying file integrity: {e}")
             return False
-
-    def process_file(self, file_path: Path, file_size: int, pbar: tqdm) -> bool:
-        """Process a single file with retries. In dry-run mode, only simulates the operations."""
-        for attempt in range(self.retry_count):
-            try:
-                # Get last modified time
-                mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
-                
-                # Create year/month path
-                year = str(mtime.year)
-                month = str(mtime.month).zfill(2)
-                target_dir = self.dest_dir / year / month
-                
-                # Create directory with error handling
-                try:
-                    target_dir.mkdir(parents=True, exist_ok=True)
-                except Exception as e:
-                    print(f"\nError creating directory {target_dir}: {e}")
-                    return False
-                
-                destination = target_dir / file_path.name
-                
-                # Handle duplicate files
-                if destination.exists():
-                    base = destination.stem
-                    suffix = destination.suffix
-                    counter = 1
-                    while destination.exists():
-                        destination = target_dir / f"{base}_{counter}{suffix}"
-                        counter += 1
-                
-                # Copy or move the file with exclusive access
-                operation = "Moving" if self.move_files else "Copying"
-                if self.dry_run:
-                    operation = f"Would {operation.lower()}"
-                pbar.set_description(f"{operation} {file_path.name}")
-                
-                if self.dry_run:
-                    print(f"{operation} {file_path} -> {destination}")
-                    self.processed_size += file_size
-                    pbar.update(file_size)
-                    return True
-                
-                try:
-                    if self.move_files:
-                        shutil.move(str(file_path), str(destination))
-                    else:
-                        shutil.copy2(str(file_path), str(destination))
-                except PermissionError:
-                    # Wait and retry if file is locked
-                    time.sleep(1)
-                    continue
-                
-                # Verify file integrity
-                if not self.verify_file_integrity(file_path, destination, file_size):
-                    raise ValueError("File integrity check failed after transfer")
-                
-                self.processed_size += file_size
-                pbar.update(file_size)
-                return True
-                
-            except Exception as e:
-                if attempt == self.retry_count - 1:
-                    self.failed_files.add(file_path)
-                    print(f"\nFailed to process {file_path.name} after {self.retry_count} attempts: {e}")
-                    return False
-                print(f"\nRetrying {file_path.name} (attempt {attempt + 2}/{self.retry_count})")
-                time.sleep(1)  # Wait before retry
-        
-        return False
 
     def print_statistics(self):
         """Print file statistics."""
