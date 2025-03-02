@@ -27,7 +27,11 @@ REQUIRED_PACKAGES = [
     'google-api-python-client', # Google Drive API
     'pydrive2',         # Alternative Google Drive library
     'boto3',            # AWS SDK for S3
-    'requests'          # HTTP requests
+    'requests',         # HTTP requests
+    # ai features
+    'torch',            # Deep learning framework
+    'torchvision',      # Computer vision models and utilities
+    'face-recognition'  # Optional: Face recognition capabilities
 ]
 
 def print_header(text):
@@ -83,10 +87,13 @@ def setup_application_files():
         print("\nPlease make sure all application files are in the same directory as this setup script.")
         return False
     
-    # Create resources directory
     resources_dir = setup_dir / "resources"
     resources_dir.mkdir(exist_ok=True)
     print(f"✓ Resources directory created/verified at {resources_dir}")
+
+    models_dir = setup_dir / "models"
+    models_dir.mkdir(exist_ok=True)
+    print(f"✓ Models directory created/verified at {models_dir}")
     
     return True
 

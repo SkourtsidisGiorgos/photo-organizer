@@ -17,6 +17,9 @@ A user-friendly application for organizing, cleaning, and converting your photo 
   - Dropbox integration
   - Google Drive integration
   - Amazon S3 support
+- **Smart Content Tagging**: Automatically identify objects, scenes, and activities in your photos
+- **Face Recognition**: Group photos by the people appearing in them
+- **Image Enhancement**: Use AI to improve lighting, color, and sharpness
 
 ## Installation
 
@@ -84,7 +87,7 @@ Removes JPG files when a matching DNG/RAW file exists with the same base name.
 3. Adjust the quality slider (higher = better quality but larger files)
 4. Click "Convert RAW to JPG"
 
-### Cloud Backup
+### Cloud Backup (In progress)
 
 The Cloud Backup tab allows you to securely back up your photo collection to popular cloud storage services.
 
@@ -115,6 +118,51 @@ The backup will be organized in a folder named "Photo_Organizer_Backup" within y
 4. Select a backup from the list
 5. Choose a destination directory for the restored files
 6. Click "Restore from Cloud" to download the backed up files
+
+## AI features (TODO)
+### Smart Content Tagging
+
+Navigate to the "AI Features" tab and select "Smart Tagging"
+1. Choose the directory containing your photos
+1. Select detection categories (objects, scenes, activities)
+1. Adjust the confidence threshold as needed (higher = more accurate but fewer detections)
+1. Choose whether to save tags to image EXIF data or a CSV file
+1. Click "Download Model" to download the required AI model (first time only)
+1. Click "Run Smart Tagging" to begin the analysis
+
+### Face Recognition
+
+1. Navigate to the "AI Features" tab and select "Face Recognition"
+1. Choose the directory containing your photos
+1. Select recognition mode:
+    - "Cluster similar faces" to group faces without identifying people
+    - "Recognize known people" to match faces against a database
+
+
+1. For clustering, specify the minimum number of photos needed to form a cluster
+1. Click "Download Model" to download the required AI model (first time only)
+1. Click "Run Face Recognition" to begin the analysis
+
+### Image Enhancement
+
+1. Navigate to the "AI Features" tab and select "Image Enhancement"
+1. Choose between enhancing a single image or batch processing a directory
+1. For single images:
+    - Select an image file to enhance
+    - Choose which enhancements to apply
+    - Click "Enhance Image" to preview the results
+    - If satisfied, click "Save Enhanced Image" to save the result
+1. For batch processing:
+    - Select source and output directories
+    - Choose which enhancements to apply
+    - Click "Enhance All Images" to process all images in the directory
+
+### Troubleshooting
+
+- **Model Download Issues**: If model download fails, check your internet connection and try again. Models are typically 100-200MB in size.
+- **Memory Errors**: AI processing can be memory-intensive. For large collections, try processing in smaller batches.
+- **Face Recognition Accuracy**: For best results, use clear, well-lit photos with faces at least 100x100 pixels in size.
+- **Performance**: AI processing is computationally intensive and may take longer on older hardware. A dedicated GPU will significantly improve performance.
 
 ## Safety Tips
 

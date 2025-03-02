@@ -8,6 +8,7 @@ import queue
 import time
 from PIL import Image, ImageTk
 from cloud_backup_ui import CloudBackupTab
+from ai_features import add_ai_features_to_app
 
 # Import functionality from existing scripts
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -74,6 +75,7 @@ class PhotoOrganizerApp:
         
         self.process_messages()
         self.operation_running = False
+        self.ai_features = add_ai_features_to_app(self)
         
         # Load app icon if available
         try:
