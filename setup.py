@@ -13,7 +13,6 @@ import platform
 import shutil
 from pathlib import Path
 
-# Define required packages
 REQUIRED_PACKAGES = [
     'pillow',           # Image processing
     'rawpy',            # RAW image processing
@@ -21,7 +20,14 @@ REQUIRED_PACKAGES = [
     'tqdm',             # Progress bars
     'imageio',          # Image I/O
     'humanize',         # Human-readable file sizes
-    'psutil'            # System utilities for disk space
+    'psutil',           # System utilities for disk space
+    # cloud backup dependencies
+    'dropbox',          # Dropbox SDK
+    'google-auth-oauthlib', # Google authentication
+    'google-api-python-client', # Google Drive API
+    'pydrive2',         # Alternative Google Drive library
+    'boto3',            # AWS SDK for S3
+    'requests'          # HTTP requests
 ]
 
 def print_header(text):

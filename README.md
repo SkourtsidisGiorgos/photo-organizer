@@ -13,13 +13,19 @@ A user-friendly application for organizing, cleaning, and converting your photo 
   - Clean up small thumbnail images
   - Remove redundant JPG files when paired with RAW/DNG
 - **Convert Photos**: Transform RAW format photos to high-quality JPG
+- **Cloud Backup**: Back up your photo collection to cloud storage services
+  - Dropbox integration
+  - Google Drive integration
+  - Amazon S3 support
 
 ## Installation
 
 ### Requirements
 
 - Python 3.6 or higher
-- Required packages: pillow, rawpy, opencv-python, tqdm, imageio, humanize, psutil
+- Required packages: 
+  - Core: pillow, rawpy, opencv-python, tqdm, imageio, humanize, psutil
+  - Cloud: dropbox, google-auth-oauthlib, google-api-python-client, pydrive2, boto3, requests
 - Optional: exiftool (for better metadata extraction)
 
 ### Easy Installation
@@ -31,7 +37,7 @@ A user-friendly application for organizing, cleaning, and converting your photo 
 
 1. Install required Python packages:
    ```
-   pip install pillow rawpy opencv-python tqdm imageio humanize psutil
+   pip install pillow rawpy opencv-python tqdm imageio humanize psutil dropbox google-auth-oauthlib google-api-python-client pydrive2 boto3 requests
    ```
 2. Download and extract the application files
 3. Run the application:
@@ -78,17 +84,77 @@ Removes JPG files when a matching DNG/RAW file exists with the same base name.
 3. Adjust the quality slider (higher = better quality but larger files)
 4. Click "Convert RAW to JPG"
 
+### Cloud Backup
+
+The Cloud Backup tab allows you to securely back up your photo collection to popular cloud storage services.
+
+#### Supported Services
+
+- **Dropbox**: Secure cloud storage with reliable sync
+- **Google Drive**: Integrates with Google ecosystem
+- **Amazon S3**: Enterprise-grade storage with excellent durability
+
+#### Backing up Photos
+
+1. Go to the "Cloud Backup" tab
+2. Select your preferred cloud service (Dropbox, Google Drive, or AWS S3)
+3. Click "Authenticate" to connect to your account
+   - For Dropbox: You'll need to authorize the app via a web browser
+   - For Google Drive: You'll need to provide OAuth credentials
+   - For Amazon S3: You'll need to provide your AWS access key, secret key, and bucket name
+4. Select the source directory containing photos you want to back up
+5. Click "Backup to Cloud" to start the upload process
+
+The backup will be organized in a folder named "Photo_Organizer_Backup" within your cloud storage, with each backup including a timestamp.
+
+#### Restoring from Backup
+
+1. Go to the "Cloud Backup" tab
+2. Authenticate with your cloud service if needed
+3. Click "Refresh Backups" to see available backups
+4. Select a backup from the list
+5. Choose a destination directory for the restored files
+6. Click "Restore from Cloud" to download the backed up files
+
 ## Safety Tips
 
 - **Always run with "Dry run" first** to see what changes will be made
 - Back up your photos before using the cleaning features
 - Keep your original RAW files even after converting to JPG
+- Regularly backup your photo collection to cloud storage for extra protection
+- Use different cloud services for critical backups to avoid single-point-of-failure
 
 ## Troubleshooting
 
 - **Missing dependencies**: Run the setup script to install required packages
 - **EXIF data not detected**: Install exiftool for better metadata extraction
 - **Performance issues**: Processing large photo collections can be resource-intensive. Try working with smaller batches.
+- **Cloud authentication failures**: 
+  - For Dropbox: Make sure you allow the application in your browser
+  - For Google Drive: Check that your OAuth credentials are correct and have the necessary permissions
+  - For Amazon S3: Verify your access keys and bucket permissions
+
+## Step-by-step for creating credentials:
+
+For Dropbox:
+
+Go to https://www.dropbox.com/developers/apps
+Click "Create app"
+Choose "Scoped access" API
+Select "Full Dropbox" access type
+Give your app a name (e.g., "MyPhotoOrganizer")
+Click "Create app"
+On the settings tab, find your App Key to use in the authentication
+
+For Google Drive:
+
+Go to https://console.cloud.google.com/
+Create a new project
+Enable the Google Drive API
+Go to "Credentials" and create OAuth client ID credentials
+Set the application type to Desktop application
+Download the JSON file
+Use this file when prompted during authentication
 
 ## Advanced Use
 
@@ -100,8 +166,20 @@ The application is built from modular Python scripts that can also be used indep
 - `small_image_cleaner.py` - Small image cleaner
 - `dng_jpg_cleaner.py` - RAW+JPG pair cleaner
 - `raw_to_jpg.py` - RAW converter
+- `cloud_backup.py` - Cloud storage integration
 
 Each script can be run directly from the command line with its own options.
+
+### Command-line Cloud Backup
+
+The cloud backup functionality can be used from the command line:
+
+```
+python cloud_backup.py --service dropbox --action auth
+python cloud_backup.py --service gdrive --action backup --source /path/to/photos
+python cloud_backup.py --service s3 --action list
+python cloud_backup.py --service dropbox --action restore --backup-id <backup_id> --dest /path/to/restore
+```
 
 ## Future Enhancements
 
@@ -109,7 +187,7 @@ Future versions will include:
 - Facial recognition for organization
 - AI-powered photo tagging
 - Batch editing features
-- Cloud backup integration
+- Enhanced cloud backup features with scheduled backups
 - Photo album creation
 
 ## License

@@ -7,6 +7,7 @@ import threading
 import queue
 import time
 from PIL import Image, ImageTk
+from cloud_backup_ui import CloudBackupTab
 
 # Import functionality from existing scripts
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -46,19 +47,21 @@ class PhotoOrganizerApp:
         self.organize_tab = ttk.Frame(self.notebook)
         self.clean_tab = ttk.Frame(self.notebook)
         self.convert_tab = ttk.Frame(self.notebook)
+        self.cloud_tab = ttk.Frame(self.notebook)  # New cloud backup tab
         self.settings_tab = ttk.Frame(self.notebook)
         
         self.notebook.add(self.organize_tab, text="Organize Photos")
         self.notebook.add(self.clean_tab, text="Clean Photos")
         self.notebook.add(self.convert_tab, text="Convert Photos")
+        self.notebook.add(self.cloud_tab, text="Cloud Backup")  # Add the new tab
         self.notebook.add(self.settings_tab, text="Settings")
         
-        # Setup each tab
         self.setup_organize_tab()
         self.setup_clean_tab()
         self.setup_convert_tab()
+        self.setup_cloud_tab() 
         self.setup_settings_tab()
-        
+                
         # Create status bar
         self.status_frame = ttk.Frame(root)
         self.status_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=5)
@@ -69,10 +72,7 @@ class PhotoOrganizerApp:
         self.progress_bar = ttk.Progressbar(self.status_frame, mode='determinate', length=200)
         self.progress_bar.pack(side=tk.RIGHT, padx=10)
         
-        # Start the message processing
         self.process_messages()
-        
-        # Control variables
         self.operation_running = False
         
         # Load app icon if available
@@ -81,7 +81,7 @@ class PhotoOrganizerApp:
             if icon_path.exists():
                 self.root.iconbitmap(icon_path)
         except Exception:
-            pass  # Ignore if icon can't be loaded
+            pass
 
     def setup_organize_tab(self):
         # Create organize frame
@@ -135,14 +135,12 @@ class PhotoOrganizerApp:
         dry_run_check = ttk.Checkbutton(options_frame, text="Dry run (simulate without making changes)", variable=self.dry_run_var)
         dry_run_check.pack(anchor=tk.W, padx=5, pady=5)
         
-        # Run button
         button_frame = ttk.Frame(frame)
         button_frame.pack(fill=tk.X, pady=20)
         
         self.organize_button = ttk.Button(button_frame, text="Organize Photos", command=self.run_organizer)
         self.organize_button.pack(side=tk.RIGHT, padx=5)
         
-        # Log area
         log_frame = ttk.LabelFrame(frame, text="Log")
         log_frame.pack(fill=tk.BOTH, expand=True, pady=10, padx=5)
         
@@ -234,35 +232,30 @@ class PhotoOrganizerApp:
             sys.stdout = PrintRedirector(self.message_queue, self.clean_log)
             
             try:
-                # Create and run cleaner
                 cleaner = SmallImageCleaner(Path(directory), max_dimension, dry_run)
                 cleaner.clean_small_images()
             finally:
                 # Restore stdout
                 sys.stdout = original_stdout
             
-            # Update status
             self.message_queue.put({
                 "type": "status",
                 "text": "Small image cleaning complete!"
             })
             
         except Exception as e:
-            # Log error
             self.message_queue.put({
                 "type": "log",
                 "widget": self.clean_log,
                 "text": f"Error: {str(e)}"
             })
             
-            # Update status
             self.message_queue.put({
                 "type": "status",
                 "text": "Error during small image cleaning."
             })
         
         finally:
-            # Signal completion
             self.message_queue.put({
                 "type": "complete",
                 "value": None
@@ -287,7 +280,6 @@ class PhotoOrganizerApp:
             messagebox.showerror("Error", "Directory does not exist.")
             return
         
-        # Confirm if not dry run
         if not dry_run:
             confirm = messagebox.askyesno(
                 "Confirm Delete",
@@ -344,35 +336,29 @@ class PhotoOrganizerApp:
             sys.stdout = PrintRedirector(self.message_queue, self.clean_log)
             
             try:
-                # Create and run cleaner
                 cleaner = DNGJPGCleaner(Path(directory), dry_run)
                 cleaner.clean_pairs()
             finally:
-                # Restore stdout
                 sys.stdout = original_stdout
             
-            # Update status
             self.message_queue.put({
                 "type": "status",
                 "text": "DNG/JPG cleaning complete!"
             })
             
         except Exception as e:
-            # Log error
             self.message_queue.put({
                 "type": "log",
                 "widget": self.clean_log,
                 "text": f"Error: {str(e)}"
             })
             
-            # Update status
             self.message_queue.put({
                 "type": "status",
                 "text": "Error during DNG/JPG cleaning."
             })
         
         finally:
-            # Signal completion
             self.message_queue.put({
                 "type": "complete",
                 "value": None
@@ -448,7 +434,6 @@ class PhotoOrganizerApp:
                 # Run converter
                 converted, errors = convert_raw_to_jpg(source_dir, dest_dir, quality)
                 
-                # Log summary
                 print("\nConversion Summary")
                 print("-" * 50)
                 print(f"Successfully converted: {converted} files")
@@ -459,28 +444,24 @@ class PhotoOrganizerApp:
                 # Restore stdout
                 sys.stdout = original_stdout
             
-            # Update status
             self.message_queue.put({
                 "type": "status",
                 "text": "RAW to JPG conversion complete!"
             })
             
         except Exception as e:
-            # Log error
             self.message_queue.put({
                 "type": "log",
                 "widget": self.convert_log,
                 "text": f"Error: {str(e)}"
             })
             
-            # Update status
             self.message_queue.put({
                 "type": "status",
                 "text": "Error during RAW to JPG conversion."
             })
         
         finally:
-            # Signal completion
             self.message_queue.put({
                 "type": "complete",
                 "value": None
@@ -562,35 +543,30 @@ class PhotoOrganizerApp:
             sys.stdout = PrintRedirector(self.message_queue, self.clean_log)
             
             try:
-                # Create and run cleaner
                 cleaner = DuplicateCleaner(Path(directory), dry_run)
                 cleaner.clean_duplicates()
             finally:
                 # Restore stdout
                 sys.stdout = original_stdout
             
-            # Update status
             self.message_queue.put({
                 "type": "status",
                 "text": "Duplicate cleaning complete!"
             })
             
         except Exception as e:
-            # Log error
             self.message_queue.put({
                 "type": "log",
                 "widget": self.clean_log,
                 "text": f"Error: {str(e)}"
             })
             
-            # Update status
             self.message_queue.put({
                 "type": "status",
                 "text": "Error during duplicate cleaning."
             })
         
         finally:
-            # Signal completion
             self.message_queue.put({
                 "type": "complete",
                 "value": None
@@ -673,35 +649,29 @@ class PhotoOrganizerApp:
             sys.stdout = PrintRedirector(self.message_queue, self.clean_log)
             
             try:
-                # Create and run cleaner
                 cleaner = BlurryImageCleaner(Path(directory), threshold, dry_run)
                 cleaner.clean_blurry_images()
             finally:
-                # Restore stdout
                 sys.stdout = original_stdout
             
-            # Update status
             self.message_queue.put({
                 "type": "status",
                 "text": "Blur cleaning complete!"
             })
             
         except Exception as e:
-            # Log error
             self.message_queue.put({
                 "type": "log",
                 "widget": self.clean_log,
                 "text": f"Error: {str(e)}"
             })
             
-            # Update status
             self.message_queue.put({
                 "type": "status",
                 "text": "Error during blur cleaning."
             })
         
         finally:
-            # Signal completion
             self.message_queue.put({
                 "type": "complete",
                 "value": None
@@ -724,6 +694,10 @@ class PhotoOrganizerApp:
         directory = filedialog.askdirectory(title="Select Directory")
         if directory:
             string_var.set(directory)
+
+    def setup_cloud_tab(self):
+        self.cloud_backup_ui = CloudBackupTab(self.cloud_tab, self.message_queue)
+
 
     def setup_clean_tab(self):
         # Create notebook for different cleaning options
@@ -1049,7 +1023,6 @@ class PhotoOrganizerApp:
                                       command=self.run_raw_converter)
         self.convert_button.pack(side=tk.RIGHT, padx=5)
         
-        # Log area
         log_frame = ttk.LabelFrame(frame, text="Log")
         log_frame.pack(fill=tk.BOTH, expand=True, pady=10, padx=5)
         
@@ -1191,26 +1164,33 @@ class PhotoOrganizerApp:
         self.root.update_idletasks()
     
     def process_messages(self):
-        """Process messages from the queue for thread safety"""
         try:
             while not self.message_queue.empty():
                 message = self.message_queue.get_nowait()
                 if message["type"] == "status":
                     self.update_status(message["text"])
                 elif message["type"] == "log":
-                    self.log_message(message["widget"], message["text"])
+                    if "widget" in message and "text" in message:
+                        self.log_message(message["widget"], message["text"])
+                    elif "message" in message:
+                        if hasattr(self, 'cloud_backup_ui'):
+                            self.cloud_backup_ui.handle_message(message)
                 elif message["type"] == "progress":
                     self.progress_bar["value"] = message["value"]
                 elif message["type"] == "complete":
                     self.operation_complete()
+                
+                elif message["type"] in ["auth_success", "auth_failure", "update_backups", 
+                                    "progress_update", "operation_complete"]:
+                    if hasattr(self, 'cloud_backup_ui'):
+                        self.cloud_backup_ui.handle_message(message)
+                        
         except queue.Empty:
             pass
         finally:
-            # Check again after 100ms
             self.root.after(100, self.process_messages)
-    
+
     def operation_complete(self):
-        """Called when background operation completes"""
         # Re-enable buttons
         self.organize_button.config(state=tk.NORMAL)
         self.duplicate_button.config(state=tk.NORMAL)
@@ -1219,10 +1199,8 @@ class PhotoOrganizerApp:
         self.dng_button.config(state=tk.NORMAL)
         self.convert_button.config(state=tk.NORMAL)
         
-        # Reset progress bar
+        # Reset
         self.progress_bar["value"] = 0
-        
-        # Reset operation flag
         self.operation_running = False
     
     def run_organizer(self):
@@ -1231,13 +1209,11 @@ class PhotoOrganizerApp:
             messagebox.showinfo("Operation in Progress", "Please wait for the current operation to complete.")
             return
         
-        # Get input values
         source_dir = self.source_var.get()
         dest_dir = self.dest_var.get()
         move_files = self.move_var.get()
         dry_run = self.dry_run_var.get()
         
-        # Validate inputs
         if not source_dir or not dest_dir:
             messagebox.showerror("Error", "Please specify both source and destination directories.")
             return
@@ -1246,7 +1222,6 @@ class PhotoOrganizerApp:
             messagebox.showerror("Error", "Source directory does not exist.")
             return
         
-        # Clear log
         self.organize_log.config(state=tk.NORMAL)
         self.organize_log.delete(1.0, tk.END)
         self.organize_log.config(state=tk.DISABLED)
@@ -1255,7 +1230,6 @@ class PhotoOrganizerApp:
         self.organize_button.config(state=tk.DISABLED)
         self.operation_running = True
         
-        # Create thread
         operation_thread = threading.Thread(
             target=self._organizer_thread,
             args=(source_dir, dest_dir, move_files, dry_run)
@@ -1303,28 +1277,24 @@ class PhotoOrganizerApp:
                 # Restore stdout
                 sys.stdout = original_stdout
             
-            # Update status
             self.message_queue.put({
                 "type": "status",
                 "text": "Organization complete!"
             })
             
         except Exception as e:
-            # Log error
             self.message_queue.put({
                 "type": "log",
                 "widget": self.organize_log,
                 "text": f"Error: {str(e)}"
             })
             
-            # Update status
             self.message_queue.put({
                 "type": "status",
                 "text": "Error during organization."
             })
         
         finally:
-            # Signal completion
             self.message_queue.put({
                 "type": "complete",
                 "value": None
