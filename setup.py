@@ -14,6 +14,7 @@ import shutil
 from pathlib import Path
 
 REQUIRED_PACKAGES = [
+    'ttkthemes',
     'pillow',           # Image processing
     'rawpy',            # RAW image processing
     'opencv-python',    # Computer vision for blur detection
@@ -31,7 +32,7 @@ REQUIRED_PACKAGES = [
     # ai features
     'torch',            # Deep learning framework
     'torchvision',      # Computer vision models and utilities
-    'face-recognition'  # Optional: Face recognition capabilities
+    #'face-recognition'  # Optional: Face recognition capabilities
 ]
 
 def print_header(text):

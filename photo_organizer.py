@@ -66,9 +66,22 @@ class PhotoOrganizer:
         return None
 
     def get_exif_date_exiftool(self, file_path: Path) -> Optional[datetime]:
-        """Extract date using exiftool for any supported format."""
         try:
-            # Run exiftool and get JSON output
+            test_result = subprocess.run(['exiftool', '-ver'], 
+                                        capture_output=True, 
+                                        text=True, 
+                                        timeout=1)
+            if test_result.returncode != 0:
+                print(f"\nExiftool test failed: {test_result.stderr}")
+                return None
+        except (subprocess.SubprocessError, FileNotFoundError):
+            print(f"""\nExiftool not found. Install it for better metadata extraction.
+- On Ubuntu/Debian: sudo apt-get install libimage-exiftool-perl
+- On macOS with Homebrew: brew install exiftool
+- On Windows: Download and install from ExifTool's official website https://exiftool.org/
+""")
+            return None
+        try:
             result = subprocess.run([
                 'exiftool',
                 '-json',

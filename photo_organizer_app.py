@@ -25,18 +25,25 @@ class PhotoOrganizerApp:
         self.root.title("Photo Organizer")
         self.root.geometry("900x700")
         self.root.minsize(800, 600)
+        self.text_size = tk.StringVar(value="Medium") 
         
-        # Set theme and style
         self.style = ttk.Style()
-        self.style.theme_use('clam')  # Use a modern theme
+        self.style.theme_use('clam')
         
-        # Configure colors
         self.style.configure('TFrame', background='#f5f5f5')
         self.style.configure('TButton', font=('Arial', 10), background='#4a7abc')
         self.style.configure('TLabel', font=('Arial', 10), background='#f5f5f5')
         self.style.configure('Header.TLabel', font=('Arial', 14, 'bold'), background='#f5f5f5')
         self.style.configure('Subheader.TLabel', font=('Arial', 12, 'bold'), background='#f5f5f5')
-        
+        self.style.layout('TButton', [
+            ('Button.border', {'children': [
+                ('Button.focus', {'children': [
+                    ('Button.padding', {'children': [
+                        ('Button.label', {'side': 'left', 'expand': 1})
+                    ]})
+                ], 'expand': 1})
+            ], 'sticky': 'nswe'})
+        ])
         # Create message queue for background threads
         self.message_queue = queue.Queue()
         
@@ -84,6 +91,53 @@ class PhotoOrganizerApp:
                 self.root.iconbitmap(icon_path)
         except Exception:
             pass
+
+    def update_text_size(self):
+        """Update all font sizes based on the selected text size"""
+        # Get the selected size factor
+        size = self.text_size.get()
+        
+        # Set size adjustments based on selection
+        if size == "Small":
+            base_size = 10
+            header_size = 16
+            subheader_size = 12
+        elif size == "Medium":
+            base_size = 12
+            header_size = 18
+            subheader_size = 14
+        elif size == "Large":
+            base_size = 14
+            header_size = 20
+            subheader_size = 16
+        else:  # Extra Large
+            base_size = 16
+            header_size = 22
+            subheader_size = 18
+        
+        # Update styles with new font sizes
+        self.style.configure('TLabel', font=('Segoe UI', base_size))
+        self.style.configure('Header.TLabel', font=('Segoe UI', header_size, 'bold'))
+        self.style.configure('Subheader.TLabel', font=('Segoe UI', subheader_size, 'bold'))
+        self.style.configure('Description.TLabel', font=('Segoe UI', base_size))
+        self.style.configure('StatusBar.TLabel', font=('Segoe UI', base_size - 1))
+        self.style.configure('TButton', font=('Segoe UI', base_size))
+        self.style.configure('Action.TButton', font=('Segoe UI', base_size + 1, 'bold'))
+        self.style.configure('TCheckbutton', font=('Segoe UI', base_size))
+        self.style.configure('TLabelframe.Label', font=('Segoe UI', base_size, 'bold'))
+        self.style.configure('TNotebook.Tab', font=('Segoe UI', base_size))
+        
+        # Update text widget fonts
+        text_widget_font = ('Consolas', base_size - 1)
+        if hasattr(self, 'organize_log'):
+            self.organize_log.config(font=text_widget_font)
+        if hasattr(self, 'clean_log'):
+            self.clean_log.config(font=text_widget_font)
+        if hasattr(self, 'convert_log'):
+            self.convert_log.config(font=text_widget_font)
+        
+        # Force refresh of the UI
+        self.root.update_idletasks()
 
     def setup_organize_tab(self):
         # Create organize frame
@@ -1081,7 +1135,39 @@ class PhotoOrganizerApp:
         default_dest_button = ttk.Button(default_dest_frame, text="Browse...", 
                                      command=lambda: self.browse_directory(self.default_dest_var))
         default_dest_button.pack(side=tk.LEFT, padx=5)
-        
+        # Text Size settings
+        text_size_frame = ttk.LabelFrame(frame, text="Display Settings")
+        text_size_frame.pack(fill=tk.X, pady=10, padx=5)
+
+        # Text size selection
+        text_size_container = ttk.Frame(text_size_frame)
+        text_size_container.pack(fill=tk.X, pady=10, padx=5)
+
+        text_size_label = ttk.Label(text_size_container, text="Text Size:")
+        text_size_label.pack(side=tk.LEFT, padx=5)
+
+        # Create radio buttons for text size options
+        sizes = ["Small", "Medium", "Large", "Extra Large"]
+        radio_frame = ttk.Frame(text_size_container)
+        radio_frame.pack(side=tk.LEFT, padx=10)
+
+        for size in sizes:
+            rb = ttk.Radiobutton(
+                radio_frame, 
+                text=size,
+                variable=self.text_size,
+                value=size,
+                command=self.update_text_size
+            )
+            rb.pack(side=tk.LEFT, padx=10)
+
+        # Apply button
+        apply_button = ttk.Button(
+            text_size_frame, 
+            text="Apply Text Size", 
+            command=self.update_text_size
+        )
+        apply_button.pack(anchor=tk.E, padx=10, pady=10)
         # Save settings button
         save_button = ttk.Button(dir_frame, text="Save Default Directories", 
                               command=self.save_settings)
@@ -1112,6 +1198,7 @@ class PhotoOrganizerApp:
             with open(settings_file, "w") as f:
                 f.write(f"default_source={self.default_source_var.get()}\n")
                 f.write(f"default_dest={self.default_dest_var.get()}\n")
+                f.write(f"text_size={self.text_size.get()}\n")
             
             messagebox.showinfo("Settings Saved", "Default directories have been saved.")
         except Exception as e:
@@ -1148,6 +1235,10 @@ class PhotoOrganizerApp:
                                     self.dest_var.set(value)
                                 if not self.raw_dest_var.get():
                                     self.raw_dest_var.set(value)
+                            elif key == "text_size":
+                                if value in ["Small", "Medium", "Large", "Extra Large"]:
+                                    self.text_size.set(value)
+                                    self.update_text_size()
         except Exception as e:
             # Silently fail on settings load, not critical
             print(f"Failed to load settings: {e}")
