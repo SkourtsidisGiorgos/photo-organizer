@@ -15,16 +15,21 @@ import json
 import os
 
 class PhotoOrganizer:
-    def __init__(self, source_dir: Path, dest_dir: Path, move_files: bool = False, dry_run: bool = False):
+    def __init__(self, source_dir: Path, dest_dir: Path, move_files: bool = False, dry_run: bool = False, 
+                 duplicate_handling: str = "skip"):
         self.source_dir = source_dir
         self.dest_dir = dest_dir
         self.move_files = move_files
         self.dry_run = dry_run
+        self.duplicate_handling = duplicate_handling  # "skip", "rename", or "replace"
+        
         self.image_formats = {'.jpg', '.jpeg', '.png', '.tiff', '.bmp', '.gif'}
         self.raw_formats = {'.dng', '.raw', '.cr2', '.nef', '.arw'}
         self.video_formats = {'.mov', '.mp4', '.avi'}
         self.supported_formats = self.image_formats | self.raw_formats | self.video_formats
+        
         self.failed_files: Set[Path] = set()
+        self.skipped_duplicates: Set[Path] = set()
         self.retry_count = 3
         self.total_size = 0
         self.processed_size = 0
@@ -33,6 +38,111 @@ class PhotoOrganizer:
             'sizes': [],
             'dates': []
         }
+        
+        # Simple cache for duplicate checks
+        self._file_hash_cache = {}
+
+    def is_duplicate_file(self, source_file: Path, destination_file: Path) -> bool:
+        """Ultra-fast metadata-only duplicate detection"""
+        if not destination_file.exists():
+            return False
+        
+        try:
+            # Get metadata for both files (instant - no file reading)
+            source_stat = source_file.stat()
+            dest_stat = destination_file.stat()
+            
+            # Step 1: Size check (instant)
+            if source_stat.st_size != dest_stat.st_size:
+                return False  # Different sizes = definitely not duplicates
+            
+            # Step 2: If sizes are 0, consider them duplicates (empty files)
+            if source_stat.st_size == 0:
+                return True
+            
+            # Step 3: Check modification times (instant)
+            # Files with identical size and very close modification times are likely duplicates
+            time_diff = abs(source_stat.st_mtime - dest_stat.st_mtime)
+            if time_diff <= 2:  # Within 2 seconds
+                return True
+            
+            # Step 4: Only if sizes match but times are different, do minimal file reading
+            # Read just the first 512 bytes for final verification
+            return self._quick_content_check(source_file, destination_file, source_stat.st_size)
+            
+        except (OSError, IOError):
+            return False
+
+    def _quick_content_check(self, source_file: Path, dest_file: Path, size: int) -> bool:
+        """Minimal file reading - only first 512 bytes"""
+        try:
+            # Cache key for this comparison
+            cache_key = f"{source_file}_{dest_file}_{size}"
+            if cache_key in self._file_hash_cache:
+                return self._file_hash_cache[cache_key]
+            
+            # Read only first 512 bytes from each file
+            bytes_to_read = min(512, size)
+            
+            with open(source_file, "rb") as f1, open(dest_file, "rb") as f2:
+                chunk1 = f1.read(bytes_to_read)
+                chunk2 = f2.read(bytes_to_read)
+                
+                # Simple byte comparison - no hashing needed
+                is_duplicate = chunk1 == chunk2
+                
+            # Cache the result
+            self._file_hash_cache[cache_key] = is_duplicate
+            return is_duplicate
+            
+        except (OSError, IOError):
+            return False
+
+    def handle_filename_conflict(self, source_file: Path, destination: Path) -> Optional[Path]:
+        """
+        Ultra-fast filename conflict handling.
+        Only checks for duplicates when filenames are identical.
+        """
+        if not destination.exists():
+            return destination  # No conflict, proceed normally
+        
+        # We have a filename conflict - decide what to do based on mode
+        if self.duplicate_handling == "skip":
+            # Only check for duplicates if filenames are exactly the same
+            if source_file.name == destination.name:
+                # Same filename - check if it's actually a duplicate (metadata-only check)
+                if self.is_duplicate_file(source_file, destination):
+                    print(f"Skipping duplicate: {source_file.name}")
+                    self.skipped_duplicates.add(source_file)
+                    return None
+            
+            # Either different filenames or not a duplicate - rename it
+            return self._generate_unique_filename(destination)
+                
+        elif self.duplicate_handling == "rename":
+            # Always rename when conflict occurs
+            return self._generate_unique_filename(destination)
+            
+        elif self.duplicate_handling == "replace":
+            # Always replace when conflict occurs
+            print(f"Replacing: {destination}")
+            return destination
+        
+        return destination
+
+    def _generate_unique_filename(self, destination: Path) -> Path:
+        """Generate a unique filename by adding counter"""
+        base = destination.stem
+        suffix = destination.suffix
+        counter = 1
+        new_destination = destination
+        
+        while new_destination.exists():
+            new_destination = destination.parent / f"{base}_{counter}{suffix}"
+            counter += 1
+        
+        print(f"Renaming to avoid conflict: {new_destination.name}")
+        return new_destination
 
     def get_exif_date_pillow(self, file_path: Path) -> Optional[datetime]:
         """Extract date from EXIF using Pillow for standard image formats."""
@@ -166,16 +276,19 @@ class PhotoOrganizer:
                 
                 destination = target_dir / file_path.name
                 
-                # Handle duplicate files
-                if destination.exists():
-                    base = destination.stem
-                    suffix = destination.suffix
-                    counter = 1
-                    while destination.exists():
-                        destination = target_dir / f"{base}_{counter}{suffix}"
-                        counter += 1
+                # Handle filename conflicts (only does expensive checks when needed)
+                final_destination = self.handle_filename_conflict(file_path, destination)
                 
-                # Copy or move the file with exclusive access
+                # If None returned, file was skipped
+                if final_destination is None:
+                    self.processed_size += file_size
+                    pbar.update(file_size)
+                    return True
+                
+                # Update destination to final path
+                destination = final_destination
+                
+                # Copy or move the file
                 operation = "Moving" if self.move_files else "Copying"
                 if self.dry_run:
                     operation = f"Would {operation.lower()}"
@@ -257,7 +370,6 @@ class PhotoOrganizer:
                 return False
             if destination.stat().st_size != original_size:
                 return False
-            # Optional: Add hash comparison if needed
             return True
         except Exception as e:
             print(f"\nError verifying file integrity: {e}")
@@ -292,6 +404,7 @@ class PhotoOrganizer:
             self.total_size = sum(files_dict.values())
             
             print(f"\nFound {total_files} files ({humanize.naturalsize(self.total_size)})")
+            print(f"Duplicate handling mode: {self.duplicate_handling}")
             
             if not self.check_disk_space(self.total_size):
                 return
@@ -305,18 +418,31 @@ class PhotoOrganizer:
             # Summary
             end_time = time.time()
             duration = end_time - self.start_time
-            successful = total_files - len(self.failed_files)
+            successful = total_files - len(self.failed_files) - len(self.skipped_duplicates)
             
             print("\nTransfer Complete!")
             print(f"Duration: {humanize.naturaltime(duration)}")
             print(f"Files processed: {successful}/{total_files}")
+            print(f"Files skipped (duplicates): {len(self.skipped_duplicates)}")
+            print(f"Files failed: {len(self.failed_files)}")
             print(f"Total size: {humanize.naturalsize(self.total_size)}")
             
-            if duration > 0:  # Avoid division by zero
+            if duration > 0:
                 print(f"Average speed: {humanize.naturalsize(self.total_size/duration)}/s")
+            
+            # Print duplicate check stats
+            if self._file_hash_cache:
+                print(f"Duplicate comparisons cached: {len(self._file_hash_cache)}")
             
             # Print statistics
             self.print_statistics()
+            
+            if self.skipped_duplicates:
+                print(f"\nSkipped duplicates ({len(self.skipped_duplicates)}):")
+                for file in list(self.skipped_duplicates)[:10]:  # Show first 10
+                    print(f"- {file}")
+                if len(self.skipped_duplicates) > 10:
+                    print(f"... and {len(self.skipped_duplicates) - 10} more")
             
             if self.failed_files:
                 print(f"\nFailed files ({len(self.failed_files)}):")
@@ -328,11 +454,13 @@ class PhotoOrganizer:
             print(f"\nAn unexpected error occurred during organization: {e}")
 
 def main():
-    parser = argparse.ArgumentParser(description='Organize photos into year/month folders by last modified date')
+    parser = argparse.ArgumentParser(description='Organize photos into year/month folders by date with ultra-fast duplicate handling')
     parser.add_argument('source', type=Path, help='Source directory containing photos')
     parser.add_argument('destination', type=Path, help='Destination directory for organized photos')
     parser.add_argument('--move', action='store_true', help='Move files instead of copying them')
     parser.add_argument('--dry-run', action='store_true', help='Simulate the organization without actually copying/moving files')
+    parser.add_argument('--duplicates', choices=['skip', 'rename', 'replace'], default='skip',
+                        help='How to handle duplicates: skip (default), rename with counter, or replace existing')
     
     args = parser.parse_args()
     
@@ -350,7 +478,7 @@ def main():
     
     try:
         # Run organization
-        organizer = PhotoOrganizer(args.source, args.destination, args.move, args.dry_run)
+        organizer = PhotoOrganizer(args.source, args.destination, args.move, args.dry_run, args.duplicates)
         organizer.organize()
     except KeyboardInterrupt:
         print("\n\nOperation cancelled by user. Partially processed files remain in destination.")

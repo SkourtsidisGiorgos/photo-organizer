@@ -1,6 +1,5 @@
 from pathlib import Path
 import cv2
-import numpy as np
 import argparse
 from typing import List, Tuple
 import humanize

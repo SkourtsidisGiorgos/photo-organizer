@@ -28,7 +28,7 @@ class FileInfo:
     inode: int = 0
     device: int = 0
 
-class BlazeSpeedDuplicateCleaner:
+class DuplicateCleaner:
     def __init__(self, directory: Path, dry_run: bool = True, max_workers: int = None):
         self.directory = directory
         self.dry_run = dry_run
@@ -44,7 +44,7 @@ class BlazeSpeedDuplicateCleaner:
         self.confidence_threshold = 0.95  # Skip content verification if confidence > 95%
         self.timestamp_tolerance = 300    # 5 minutes - files created close together are likely duplicates
         self.verify_samples = 512         # Tiny sample for verification
-        self.max_verify_files = 100       # Limit content verification
+        self.max_verify_files = 1000       # Limit content verification
         
         # Pre-compile patterns for maximum speed
         self._patterns = [
@@ -80,8 +80,6 @@ class BlazeSpeedDuplicateCleaner:
 
     async def ultra_scan_async(self) -> List[FileInfo]:
         """Async file scanning - brutally fast"""
-        files = []
-        
         def scan_chunk(dir_paths):
             """Scan a chunk of directories"""
             chunk_files = []
@@ -96,7 +94,7 @@ class BlazeSpeedDuplicateCleaner:
                                     
                                     if size >= self.min_file_size:
                                         base_name, seq = self.get_base_name_and_sequence(entry.name)
-                                        chunk_files.append(FileInfo(
+                                        file_info = FileInfo(
                                             path=Path(entry.path),
                                             size=size,
                                             ctime=stat_info.st_ctime,
@@ -104,11 +102,9 @@ class BlazeSpeedDuplicateCleaner:
                                             base_name=base_name,
                                             inode=stat_info.st_ino,
                                             device=stat_info.st_dev
-                                        ))
-                                elif entry.is_dir(follow_symlinks=False):
-                                    # Add subdirectory to process
-                                    pass
-                            except (OSError, IOError):
+                                        )
+                                        chunk_files.append(file_info)
+                            except (OSError, IOError, AttributeError):
                                 continue
                 except (OSError, IOError):
                     continue
@@ -116,7 +112,7 @@ class BlazeSpeedDuplicateCleaner:
         
         # Get all directories first
         all_dirs = [self.directory]
-        for root, dirs, files in os.walk(self.directory):
+        for root, dirs, files_in_dir in os.walk(self.directory):
             all_dirs.extend(Path(root) / d for d in dirs)
         
         # Process directories in parallel chunks
@@ -126,11 +122,15 @@ class BlazeSpeedDuplicateCleaner:
         loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             tasks = [loop.run_in_executor(executor, scan_chunk, chunk) for chunk in dir_chunks]
-            results = await asyncio.gather(*tasks)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # Flatten results
-        for chunk_files in results:
-            files.extend(chunk_files)
+        # Flatten results and filter out any exceptions
+        files = []
+        for result in results:
+            if isinstance(result, list):
+                files.extend(result)
+            elif isinstance(result, Exception):
+                print(f"Warning: Error in scanning chunk: {result}")
         
         return files
 
@@ -364,7 +364,7 @@ def main():
     parser.add_argument('--workers', type=int, default=None, help='Number of workers')
     parser.add_argument('--min-size', type=int, default=1024, help='Minimum file size (bytes)')
     parser.add_argument('--confidence', type=float, default=0.95, help='Confidence threshold (0.0-1.0)')
-    parser.add_argument('--max-verify', type=int, default=100, help='Max files to content-verify')
+    parser.add_argument('--max-verify', type=int, default=1000, help='Max files to content-verify')
     
     args = parser.parse_args()
     

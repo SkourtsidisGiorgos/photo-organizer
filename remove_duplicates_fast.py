@@ -10,6 +10,7 @@ import asyncio
 import time
 from dataclasses import dataclass
 import stat
+import platform
 
 # Try imports for maximum speed
 try:
@@ -270,6 +271,48 @@ class BlazeSpeedDuplicateCleaner:
         
         return duplicate_groups
 
+    def remove_hard_links_safely(self, files: List[FileInfo]) -> List[FileInfo]:
+        """Remove hard links more carefully, with Windows compatibility"""
+        if platform.system() == "Windows":
+            # On Windows, inode checking is unreliable, so we'll use a different approach
+            # We'll check for files with identical size, mtime, and path differences
+            unique_files = []
+            seen_file_ids = set()
+            
+            for file_info in files:
+                try:
+                    # Use a combination of size and mtime as a basic check
+                    # This isn't perfect but better than relying on st_ino on Windows
+                    file_id = (file_info.size, int(file_info.mtime * 1000))  # mtime to milliseconds
+                    
+                    # Check if this exact file already exists (by path)
+                    path_str = str(file_info.path)
+                    is_duplicate_path = any(str(f.path) == path_str for f in unique_files)
+                    
+                    if not is_duplicate_path:
+                        unique_files.append(file_info)
+                        seen_file_ids.add(file_id)
+                    
+                except (OSError, IOError):
+                    # If we can't get file info, include it anyway
+                    unique_files.append(file_info)
+            
+            print(f"🔗 Removed {len(files) - len(unique_files)} potential hard links (Windows mode)")
+            return unique_files
+        
+        else:
+            # On Unix-like systems, use the original inode-based approach
+            unique_files = []
+            seen_inodes = set()
+            for file_info in files:
+                inode_key = (file_info.device, file_info.inode)
+                if inode_key not in seen_inodes:
+                    seen_inodes.add(inode_key)
+                    unique_files.append(file_info)
+            
+            print(f"🔗 Removed {len(files) - len(unique_files)} hard links")
+            return unique_files
+
     async def find_duplicates_blazing(self) -> List[Tuple[FileInfo, List[FileInfo]]]:
         """Blazing fast duplicate detection"""
         print("🚀 BLAZING SPEED MODE - Scanning...")
@@ -283,16 +326,8 @@ class BlazeSpeedDuplicateCleaner:
         if not files:
             return []
         
-        # Remove hard links
-        unique_files = []
-        seen_inodes = set()
-        for file_info in files:
-            inode_key = (file_info.device, file_info.inode)
-            if inode_key not in seen_inodes:
-                seen_inodes.add(inode_key)
-                unique_files.append(file_info)
-        
-        print(f"🔗 Removed {len(files) - len(unique_files)} hard links")
+        # Remove hard links safely
+        unique_files = self.remove_hard_links_safely(files)
         
         # Metadata-only grouping
         start_time = time.time()

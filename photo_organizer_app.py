@@ -183,13 +183,50 @@ class PhotoOrganizerApp:
         options_frame = ttk.LabelFrame(frame, text="Options")
         options_frame.pack(fill=tk.X, pady=10, padx=5)
         
+        # Row 1: Move files and dry run options
+        options_row1 = ttk.Frame(options_frame)
+        options_row1.pack(fill=tk.X, pady=5, padx=5)
+        
         self.move_var = tk.BooleanVar(value=False)
-        move_check = ttk.Checkbutton(options_frame, text="Move files (instead of copy)", variable=self.move_var)
-        move_check.pack(anchor=tk.W, padx=5, pady=5)
+        move_check = ttk.Checkbutton(options_row1, text="Move files (instead of copy)", variable=self.move_var)
+        move_check.pack(anchor=tk.W, pady=2)
         
         self.dry_run_var = tk.BooleanVar(value=True)
-        dry_run_check = ttk.Checkbutton(options_frame, text="Dry run (simulate without making changes)", variable=self.dry_run_var)
-        dry_run_check.pack(anchor=tk.W, padx=5, pady=5)
+        dry_run_check = ttk.Checkbutton(options_row1, text="Dry run (simulate without making changes)", variable=self.dry_run_var)
+        dry_run_check.pack(anchor=tk.W, pady=2)
+        
+        # Row 2: Duplicate handling options
+        duplicates_frame = ttk.Frame(options_frame)
+        duplicates_frame.pack(fill=tk.X, pady=5, padx=5)
+        
+        duplicates_label = ttk.Label(duplicates_frame, text="When duplicate files are found:")
+        duplicates_label.pack(anchor=tk.W, pady=(5, 2))
+        
+        # Radio buttons for duplicate handling
+        self.duplicate_handling_var = tk.StringVar(value="skip")
+        
+        radio_frame = ttk.Frame(duplicates_frame)
+        radio_frame.pack(anchor=tk.W, padx=20)
+        
+        skip_radio = ttk.Radiobutton(radio_frame, text="Skip duplicates (recommended)", 
+                                    variable=self.duplicate_handling_var, value="skip")
+        skip_radio.pack(anchor=tk.W, pady=1)
+        
+        rename_radio = ttk.Radiobutton(radio_frame, text="Rename with counter (file_1.jpg, file_2.jpg)", 
+                                      variable=self.duplicate_handling_var, value="rename")
+        rename_radio.pack(anchor=tk.W, pady=1)
+        
+        replace_radio = ttk.Radiobutton(radio_frame, text="Replace existing file", 
+                                       variable=self.duplicate_handling_var, value="replace")
+        replace_radio.pack(anchor=tk.W, pady=1)
+        
+        # Help text for duplicate handling
+        help_text = ttk.Label(duplicates_frame, 
+                             text="• Skip: Uses advanced duplicate detection to avoid copying identical files\n"
+                                 "• Rename: Adds numbers to filenames when conflicts occur\n"
+                                 "• Replace: Overwrites existing files with same name",
+                             font=('Arial', 9), foreground='#666666')
+        help_text.pack(anchor=tk.W, pady=(5, 2), padx=20)
         
         button_frame = ttk.Frame(frame)
         button_frame.pack(fill=tk.X, pady=20)
@@ -210,6 +247,72 @@ class PhotoOrganizerApp:
         
         # Make log read-only
         self.organize_log.config(state=tk.DISABLED)
+
+    def _organizer_thread(self, source_dir, dest_dir, move_files, dry_run):
+        """Background thread for photo organization"""
+        try:
+            # Update status
+            self.message_queue.put({
+                "type": "status",
+                "text": "Organizing photos..."
+            })
+            
+            # Get duplicate handling mode
+            duplicate_handling = self.duplicate_handling_var.get()
+            
+            # Create redirect class to capture print output
+            class PrintRedirector:
+                def __init__(self, queue, widget):
+                    self.queue = queue
+                    self.widget = widget
+                
+                def write(self, text):
+                    if text.strip():  # Only process non-empty text
+                        self.queue.put({
+                            "type": "log",
+                            "widget": self.widget,
+                            "text": text.rstrip()
+                        })
+                
+                def flush(self):
+                    pass
+            
+            # Redirect stdout
+            original_stdout = sys.stdout
+            sys.stdout = PrintRedirector(self.message_queue, self.organize_log)
+            
+            try:
+                # Create and run organizer with duplicate handling
+                source_path = Path(source_dir)
+                dest_path = Path(dest_dir)
+                organizer = PhotoOrganizer(source_path, dest_path, move_files, dry_run, duplicate_handling)
+                organizer.organize()
+            finally:
+                # Restore stdout
+                sys.stdout = original_stdout
+            
+            self.message_queue.put({
+                "type": "status",
+                "text": "Organization complete!"
+            })
+            
+        except Exception as e:
+            self.message_queue.put({
+                "type": "log",
+                "widget": self.organize_log,
+                "text": f"Error: {str(e)}"
+            })
+            
+            self.message_queue.put({
+                "type": "status",
+                "text": "Error during organization."
+            })
+        
+        finally:
+            self.message_queue.put({
+                "type": "complete",
+                "value": None
+            })
 
     def run_small_cleaner(self):
         """Run small image cleaner in background thread"""
