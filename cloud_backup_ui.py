@@ -1,15 +1,12 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import threading
-import queue
-import time
 from pathlib import Path
 import humanize
 import sys
-import os
 
 # Import cloud backup functionality
-from cloud_backup import get_backup_service, CloudBackupService
+from cloud_backup import get_backup_service
 
 class CloudBackupTab:
     """Cloud Backup tab UI component for Photo Organizer"""

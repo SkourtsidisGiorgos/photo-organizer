@@ -5,8 +5,6 @@ from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
 import threading
 import queue
-import time
-from PIL import Image, ImageTk
 from cloud_backup_ui import CloudBackupTab
 from ai_features import add_ai_features_to_app
 

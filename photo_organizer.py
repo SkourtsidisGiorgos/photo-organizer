@@ -9,7 +9,6 @@ import psutil
 from tqdm import tqdm
 from statistics import mean
 from PIL import Image
-from PIL.ExifTags import TAGS
 import subprocess
 import json
 import os

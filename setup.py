@@ -10,7 +10,6 @@ import os
 import sys
 import subprocess
 import platform
-import shutil
 from pathlib import Path
 
 REQUIRED_PACKAGES = [

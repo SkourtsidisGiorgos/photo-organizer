@@ -1,11 +1,7 @@
-import os
-import sys
 import json
 import time
-import threading
 from pathlib import Path
 from datetime import datetime
-import requests
 import boto3
 from botocore.exceptions import ClientError
 from google.oauth2.credentials import Credentials
@@ -13,12 +9,10 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
-from pydrive2.auth import GoogleAuth
-from pydrive2.drive import GoogleDrive
 from tqdm import tqdm
 import humanize
 import dropbox
-from dropbox.exceptions import AuthError, ApiError
+from dropbox.exceptions import ApiError
 from dropbox.files import WriteMode
 
 

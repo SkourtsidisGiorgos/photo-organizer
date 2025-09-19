@@ -1,9 +1,6 @@
 import tkinter as tk
 from PIL import Image, ImageTk
 from pathlib import Path
-import time
-import sys
-import os
 
 class SplashScreen:
     def __init__(self, parent, app_name="Photo Organizer", timeout=2000):

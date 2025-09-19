@@ -2,7 +2,6 @@ import os
 import rawpy
 import imageio
 import argparse
-import numpy as np
 from pathlib import Path
 
 def convert_raw_to_jpg(input_dir, output_dir, quality=95):

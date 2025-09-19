@@ -1,7 +1,7 @@
 from pathlib import Path
 import re
 import argparse
-from typing import Dict, List, Set, Tuple, NamedTuple, Optional
+from typing import Dict, List, Tuple
 import hashlib
 from collections import defaultdict
 import concurrent.futures
@@ -9,7 +9,6 @@ import os
 import asyncio
 import time
 from dataclasses import dataclass
-import stat
 
 # Try imports for maximum speed
 try:

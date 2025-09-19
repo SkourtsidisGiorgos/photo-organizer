@@ -1,14 +1,10 @@
-import os
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
 import threading
-import queue
 import numpy as np
 import cv2
 from PIL import Image, ImageTk
-import torch
-import torchvision.transforms as transforms
 from torchvision.models import resnet50
 
 class AIFeatures:
